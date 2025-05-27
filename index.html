@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FluidBrowse Gesture Data Collection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            padding: 30px;
+            max-width: 800px;
+            width: 90%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .setup-section, .collection-section {
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus, .input-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .gesture-canvas {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            background: #f8f9fa;
+            cursor: crosshair;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .canvas-instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #999;
+            pointer-events: none;
+            font-size: 18px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #e1e5e9;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .progress-bar {
+            background: #e1e5e9;
+            height: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 100%;
+            transition: width 0.3s;
+            border-radius: 5px;
+        }
+
+        .gesture-trail {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .feedback {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-weight: 600;
+        }
+
+        .feedback.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .feedback.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .gesture-preview {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .gesture-card {
+            flex: 1;
+            min-width: 120px;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .gesture-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+        }
+
+        .gesture-card.active {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .gesture-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖱️ FluidBrowse Gesture Data Collection</h1>
+            <p>Help us improve gesture recognition by contributing your mouse gestures!</p>
+        </div>
+
+        <!-- Setup Section -->
+        <div id="setup-section" class="setup-section">
+            <div class="input-group">
+                <label for="participant-id">Your Participant ID:</label>
+                <input type="text" id="participant-id" placeholder="Enter a unique identifier (e.g., your initials + numbers)">
+            </div>
+            
+            <div class="input-group">
+                <label for="age-group">Age Group:</label>
+                <select id="age-group">
+                    <option value="">Select age group</option>
+                    <option value="18-25">18-25</option>
+                    <option value="26-35">26-35</option>
+                    <option value="36-45">36-45</option>
+                    <option value="46-55">46-55</option>
+                    <option value="56+">56+</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="experience">Computer Experience:</label>
+                <select id="experience">
+                    <option value="">Select experience level</option>
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                    <option value="expert">Expert</option>
+                </select>
+            </div>
+
+            <button class="btn" id="start-collection">Start Data Collection</button>
+        </div>
+
+        <!-- Collection Section -->
+        <div id="collection-section" class="collection-section hidden">
+            <h2>Gesture Collection</h2>
+            
+            <div class="gesture-preview">
+                <div class="gesture-card" data-gesture="shake">
+                    <div class="gesture-icon">↯</div>
+                    <div>Shake/Zigzag</div>
+                    <small>Page Transfer</small>
+                </div>
+                <div class="gesture-card" data-gesture="rectangle">
+                    <div class="gesture-icon">⬜</div>
+                    <div>Rectangle</div>
+                    <small>Save to List</small>
+                </div>
+                <div class="gesture-card" data-gesture="close">
+                    <div class="gesture-icon">⊃</div>
+                    <div>U-Shape</div>
+                    <small>Close Tab</small>
+                </div>
+                <div class="gesture-card" data-gesture="backward">
+                    <div class="gesture-icon">←</div>
+                    <div>Left Arrow</div>
+                    <small>Go Back</small>
+                </div>
+                <div class="gesture-card" data-gesture="forward">
+                    <div class="gesture-icon">→</div>
+                    <div>Right Arrow</div>
+                    <small>Go Forward</small>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="current-gesture-count">0</div>
+                    <div class="stat-label">Current Gesture</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="total-gestures">0</div>
+                    <div class="stat-label">Total Collected</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="completion-percent">0%</div>
+                    <div class="stat-label">Completion</div>
+                </div>
+            </div>
+
+            <div>
+                <label>Progress for <span id="current-gesture-name">Select a gesture</span>:</label>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                </div>
+                <small><span id="progress-text">0/25</span> gestures completed</small>
+            </div>
+
+            <canvas id="gesture-canvas" class="gesture-canvas" width="600" height="400">
+                <div class="canvas-instructions">
+                    Select a gesture type above, then draw here with your mouse
+                </div>
+            </canvas>
+
+            <div class="control-buttons">
+                <button class="btn" id="clear-canvas">Clear Canvas</button>
+                <button class="btn" id="undo-last">Undo Last</button>
+                <button class="btn" id="export-data">Export Data</button>
+                <button class="btn" id="reset-collection">Reset All</button>
+            </div>
+
+            <div id="feedback-area"></div>
+        </div>
+    </div>
+
+    <script>
+        class GestureDataCollector {
+            constructor() {
+                this.participantId = null;
+                this.participantData = {};
+                this.currentGesture = null;
+                this.collectedData = [];
+                this.isDrawing = false;
+                this.currentPath = [];
+                this.gestureCount = {};
+                this.targetCount = 25;
+                
+                this.canvas = null;
+                this.ctx = null;
+                
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                this.initCanvas();
+                this.loadSavedData();
+            }
+
+            setupEventListeners() {
+                document.getElementById('start-collection').addEventListener('click', () => this.startCollection());
+                document.getElementById('clear-canvas').addEventListener('click', () => this.clearCanvas());
+                document.getElementById('undo-last').addEventListener('click', () => this.undoLast());
+                document.getElementById('export-data').addEventListener('click', () => this.exportData());
+                document.getElementById('reset-collection').addEventListener('click', () => this.resetCollection());
+
+                // Gesture selection
+                document.querySelectorAll('.gesture-card').forEach(card => {
+                    card.addEventListener('click', () => this.selectGesture(card.dataset.gesture));
+                });
+            }
+
+            initCanvas() {
+                this.canvas = document.getElementById('gesture-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                
+                // Set canvas size properly
+                const container = this.canvas.parentElement;
+                this.canvas.width = 600;
+                this.canvas.height = 400;
+                
+                // Mouse events for desktop
+                this.canvas.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    this.startDrawing(e);
+                });
+                
+                this.canvas.addEventListener('mousemove', (e) => {
+                    e.preventDefault();
+                    this.draw(e);
+                });
+                
+                this.canvas.addEventListener('mouseup', (e) => {
+                    e.preventDefault();
+                    this.stopDrawing();
+                });
+                
+                this.canvas.addEventListener('mouseleave', (e) => {
+                    e.preventDefault();
+                    this.stopDrawing();
+                });
+
+                // Touch events for mobile
+                this.canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const touch = this.getTouchPos(e);
+                    this.startDrawing(touch);
+                });
+                
+                this.canvas.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    const touch = this.getTouchPos(e);
+                    this.draw(touch);
+                });
+                
+                this.canvas.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    this.stopDrawing();
+                });
+
+                // Add initial instructions
+                this.drawInstructions();
+            }
+
+            drawInstructions() {
+                this.ctx.fillStyle = '#999';
+                this.ctx.font = '18px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('Select a gesture type above, then draw here', this.canvas.width/2, this.canvas.height/2 - 20);
+                this.ctx.fillText('Click and drag to draw your gesture', this.canvas.width/2, this.canvas.height/2 + 20);
+            }
+
+            getTouchPos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const touch = e.touches[0] || e.changedTouches[0];
+                return {
+                    clientX: touch.clientX - rect.left,
+                    clientY: touch.clientY - rect.top
+                };
+            }
+
+            startCollection() {
+                const participantId = document.getElementById('participant-id').value.trim();
+                const ageGroup = document.getElementById('age-group').value;
+                const experience = document.getElementById('experience').value;
+
+                if (!participantId || !ageGroup || !experience) {
+                    this.showFeedback('Please fill in all fields', 'error');
+                    return;
+                }
+
+                this.participantId = participantId;
+                this.participantData = {
+                    participantId,
+                    ageGroup,
+                    experience,
+                    startTime: new Date().toISOString()
+                };
+
+                document.getElementById('setup-section').classList.add('hidden');
+                document.getElementById('collection-section').classList.remove('hidden');
+                
+                this.showFeedback('Data collection started! Select a gesture type and start drawing.', 'success');
+            }
+
+            selectGesture(gestureType) {
+                this.currentGesture = gestureType;
+                
+                // Update UI
+                document.querySelectorAll('.gesture-card').forEach(card => {
+                    card.classList.remove('active');
+                });
+                document.querySelector(`[data-gesture="${gestureType}"]`).classList.add('active');
+
+                const gestureNames = {
+                    shake: 'Shake/Zigzag',
+                    rectangle: 'Rectangle', 
+                    close: 'U-Shape',
+                    backward: 'Left Arrow',
+                    forward: 'Right Arrow'
+                };
+
+                document.getElementById('current-gesture-name').textContent = gestureNames[gestureType];
+                this.updateStats();
+                this.clearCanvas();
+                
+                this.showFeedback(`Selected: ${gestureNames[gestureType]}. Start drawing on the canvas!`, 'success');
+            }
+
+            startDrawing(e) {
+                if (!this.currentGesture) {
+                    this.showFeedback('Please select a gesture type first', 'error');
+                    return;
+                }
+
+                this.isDrawing = true;
+                this.currentPath = [];
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX !== undefined) ? e.clientX - rect.left : e.clientX;
+                const y = (e.clientY !== undefined) ? e.clientY - rect.top : e.clientY;
+                
+                this.currentPath.push({
+                    x: x,
+                    y: y,
+                    timestamp: Date.now()
+                });
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y);
+                
+                // Show visual feedback that drawing started
+                this.showDrawingFeedback(true);
+            }
+
+            draw(e) {
+                if (!this.isDrawing) return;
+
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX !== undefined) ? e.clientX - rect.left : e.clientX;
+                const y = (e.clientY !== undefined) ? e.clientY - rect.top : e.clientY;
+
+                // Only add point if there's significant movement
+                const lastPoint = this.currentPath[this.currentPath.length - 1];
+                const dx = x - lastPoint.x;
+                const dy = y - lastPoint.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                
+                if (distance > 2) { // Only add if moved more than 2 pixels
+                    this.currentPath.push({
+                        x: x,
+                        y: y,
+                        timestamp: Date.now()
+                    });
+
+                    this.ctx.lineWidth = 3;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.strokeStyle = '#667eea';
+                    this.ctx.lineTo(x, y);
+                    this.ctx.stroke();
+                }
+            }
+
+            stopDrawing() {
+                if (!this.isDrawing) {
+                    return;
+                }
+
+                this.isDrawing = false;
+                this.showDrawingFeedback(false);
+                
+                console.log(`Gesture completed with ${this.currentPath.length} points`);
+                
+                // Check if we have enough points for a valid gesture
+                if (this.currentPath.length >= 5) {
+                    this.saveGesture();
+                } else {
+                    this.showFeedback('Gesture too short - please draw a longer gesture', 'error');
+                    setTimeout(() => this.clearCanvas(), 1000);
+                }
+            }
+
+            showDrawingFeedback(isDrawing) {
+                if (isDrawing) {
+                    // Add a temporary indicator
+                    if (!document.getElementById('drawing-indicator')) {
+                        const indicator = document.createElement('div');
+                        indicator.id = 'drawing-indicator';
+                        indicator.innerHTML = '🖱️ Drawing gesture...';
+                        indicator.style.cssText = `
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            background: rgba(102, 126, 234, 0.9);
+                            color: white;
+                            padding: 10px 15px;
+                            border-radius: 5px;
+                            font-weight: bold;
+                            z-index: 1000;
+                            animation: pulse 1s infinite;
+                        `;
+                        document.body.appendChild(indicator);
+                        
+                        // Add pulse animation
+                        if (!document.getElementById('pulse-style')) {
+                            const style = document.createElement('style');
+                            style.id = 'pulse-style';
+                            style.textContent = `
+                                @keyframes pulse {
+                                    0% { opacity: 1; }
+                                    50% { opacity: 0.7; }
+                                    100% { opacity: 1; }
+                                }
+                            `;
+                            document.head.appendChild(style);
+                        }
+                    }
+                } else {
+                    // Remove indicator
+                    const indicator = document.getElementById('drawing-indicator');
+                    if (indicator) {
+                        indicator.remove();
+                    }
+                }
+            }
+
+            saveGesture() {
+                if (!this.currentGesture || this.currentPath.length < 5) return;
+
+                const gestureData = {
+                    participantId: this.participantId,
+                    gestureType: this.currentGesture,
+                    points: [...this.currentPath],
+                    timestamp: Date.now(),
+                    duration: this.currentPath[this.currentPath.length - 1].timestamp - this.currentPath[0].timestamp,
+                    features: this.extractFeatures(this.currentPath)
+                };
+
+                this.collectedData.push(gestureData);
+                
+                // Update gesture count
+                this.gestureCount[this.currentGesture] = (this.gestureCount[this.currentGesture] || 0) + 1;
+                
+                this.saveToLocalStorage();
+                this.updateStats();
+                
+                const count = this.gestureCount[this.currentGesture];
+                if (count >= this.targetCount) {
+                    this.showFeedback(`Great! You've completed ${this.targetCount} ${this.currentGesture} gestures!`, 'success');
+                } else {
+                    this.showFeedback(`Gesture saved! (${count}/${this.targetCount})`, 'success');
+                }
+
+                setTimeout(() => this.clearCanvas(), 1500);
+            }
+
+            extractFeatures(points) {
+                if (points.length < 2) return {};
+
+                const features = {
+                    pointCount: points.length,
+                    totalDistance: 0,
+                    averageSpeed: 0,
+                    directionChanges: 0,
+                    boundingBox: this.calculateBoundingBox(points)
+                };
+
+                // Calculate distances and speeds
+                const speeds = [];
+                let lastDirection = null;
+                let directionChanges = 0;
+
+                for (let i = 1; i < points.length; i++) {
+                    const dx = points[i].x - points[i-1].x;
+                    const dy = points[i].y - points[i-1].y;
+                    const distance = Math.sqrt(dx*dx + dy*dy);
+                    const timeDiff = points[i].timestamp - points[i-1].timestamp;
+
+                    features.totalDistance += distance;
+
+                    if (timeDiff > 0) {
+                        speeds.push(distance / timeDiff);
+                    }
+
+                    // Calculate direction changes
+                    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                        const direction = Math.atan2(dy, dx);
+                        if (lastDirection !== null) {
+                            const angleDiff = Math.abs(direction - lastDirection);
+                            if (angleDiff > Math.PI / 6) { // 30 degrees
+                                directionChanges++;
+                            }
+                        }
+                        lastDirection = direction;
+                    }
+                }
+
+                features.averageSpeed = speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
+                features.directionChanges = directionChanges;
+
+                return features;
+            }
+
+            calculateBoundingBox(points) {
+                if (points.length === 0) return null;
+
+                let minX = points[0].x, maxX = points[0].x;
+                let minY = points[0].y, maxY = points[0].y;
+
+                points.forEach(point => {
+                    minX = Math.min(minX, point.x);
+                    maxX = Math.max(maxX, point.x);
+                    minY = Math.min(minY, point.y);
+                    maxY = Math.max(maxY, point.y);
+                });
+
+                return {
+                    minX, maxX, minY, maxY,
+                    width: maxX - minX,
+                    height: maxY - minY,
+                    centerX: (minX + maxX) / 2,
+                    centerY: (minY + maxY) / 2,
+                    aspectRatio: (maxX - minX) / Math.max(maxY - minY, 1)
+                };
+            }
+
+            updateStats() {
+                const currentCount = this.gestureCount[this.currentGesture] || 0;
+                const totalGestures = Object.values(this.gestureCount).reduce((a, b) => a + b, 0);
+                const totalPossible = 5 * this.targetCount; // 5 gesture types
+                const completionPercent = Math.round((totalGestures / totalPossible) * 100);
+
+                document.getElementById('current-gesture-count').textContent = currentCount;
+                document.getElementById('total-gestures').textContent = totalGestures;
+                document.getElementById('completion-percent').textContent = completionPercent + '%';
+
+                // Update progress bar
+                const progress = (currentCount / this.targetCount) * 100;
+                document.getElementById('progress-fill').style.width = Math.min(progress, 100) + '%';
+                document.getElementById('progress-text').textContent = `${currentCount}/${this.targetCount}`;
+            }
+
+            clearCanvas() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.currentPath = [];
+                
+                // Redraw instructions if no gesture is selected
+                if (!this.currentGesture) {
+                    this.drawInstructions();
+                } else {
+                    // Show gesture-specific instructions
+                    this.ctx.fillStyle = '#667eea';
+                    this.ctx.font = '16px Arial';
+                    this.ctx.textAlign = 'center';
+                    const gestureNames = {
+                        shake: 'Draw a zigzag pattern (left-right-left)',
+                        rectangle: 'Draw a rectangular box shape',
+                        close: 'Draw a U-shaped curve',
+                        backward: 'Draw a left-pointing arrow',
+                        forward: 'Draw a right-pointing arrow'
+                    };
+                    this.ctx.fillText(gestureNames[this.currentGesture] || 'Draw your gesture', 
+                                    this.canvas.width/2, this.canvas.height/2);
+                }
+            }
+
+            undoLast() {
+                if (this.collectedData.length === 0) {
+                    this.showFeedback('No gestures to undo', 'error');
+                    return;
+                }
+
+                const lastGesture = this.collectedData.pop();
+                this.gestureCount[lastGesture.gestureType]--;
+                
+                if (this.gestureCount[lastGesture.gestureType] <= 0) {
+                    delete this.gestureCount[lastGesture.gestureType];
+                }
+
+                this.saveToLocalStorage();
+                this.updateStats();
+                this.clearCanvas();
+                this.showFeedback('Last gesture removed', 'success');
+            }
+
+            exportData() {
+                if (this.collectedData.length === 0) {
+                    this.showFeedback('No data to export', 'error');
+                    return;
+                }
+
+                const exportData = {
+                    participantInfo: this.participantData,
+                    totalGestures: this.collectedData.length,
+                    gesturesByType: this.gestureCount,
+                    rawData: this.collectedData,
+                    exportDate: new Date().toISOString(),
+                    completionStatus: this.getCompletionStatus()
+                };
+
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `gesture_data_${this.participantId}_${Date.now()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                this.showFeedback('Data exported successfully!', 'success');
+            }
+
+            getCompletionStatus() {
+                const status = {};
+                const gestures = ['shake', 'cloud', 'close', 'backward', 'forward'];
+                
+                gestures.forEach(gesture => {
+                    const count = this.gestureCount[gesture] || 0;
+                    status[gesture] = {
+                        completed: count,
+                        target: this.targetCount,
+                        percentage: Math.round((count / this.targetCount) * 100)
+                    };
+                });
+
+                return status;
+            }
+
+            resetCollection() {
+                if (confirm('Are you sure you want to reset all collected data? This cannot be undone.')) {
+                    this.collectedData = [];
+                    this.gestureCount = {};
+                    this.currentGesture = null;
+                    
+                    localStorage.removeItem(`gestureData_${this.participantId}`);
+                    
+                    this.updateStats();
+                    this.clearCanvas();
+                    
+                    document.querySelectorAll('.gesture-card').forEach(card => {
+                        card.classList.remove('active');
+                    });
+                    
+                    this.showFeedback('All data has been reset', 'success');
+                }
+            }
+
+            saveToLocalStorage() {
+                if (this.participantId) {
+                    const data = {
+                        participantData: this.participantData,
+                        collectedData: this.collectedData,
+                        gestureCount: this.gestureCount
+                    };
+                    localStorage.setItem(`gestureData_${this.participantId}`, JSON.stringify(data));
+                }
+            }
+
+            loadSavedData() {
+                // This will be called when returning to the app
+                const urlParams = new URLSearchParams(window.location.search);
+                const savedParticipantId = urlParams.get('participant');
+                
+                if (savedParticipantId) {
+                    const savedData = localStorage.getItem(`gestureData_${savedParticipantId}`);
+                    if (savedData) {
+                        const data = JSON.parse(savedData);
+                        this.participantId = savedParticipantId;
+                        this.participantData = data.participantData;
+                        this.collectedData = data.collectedData || [];
+                        this.gestureCount = data.gestureCount || {};
+                        
+                        // Auto-start collection
+                        document.getElementById('setup-section').classList.add('hidden');
+                        document.getElementById('collection-section').classList.remove('hidden');
+                        this.updateStats();
+                        
+                        this.showFeedback('Welcome back! Your previous data has been loaded.', 'success');
+                    }
+                }
+            }
+
+            showFeedback(message, type) {
+                const feedbackArea = document.getElementById('feedback-area');
+                const feedback = document.createElement('div');
+                feedback.className = `feedback ${type}`;
+                feedback.textContent = message;
+                
+                feedbackArea.innerHTML = '';
+                feedbackArea.appendChild(feedback);
+                
+                setTimeout(() => {
+                    feedback.remove();
+                }, 5000);
+            }
+        }
+
+        // Initialize the application
+        const collector = new GestureDataCollector();
+    </script>
+</body>
+</html>
