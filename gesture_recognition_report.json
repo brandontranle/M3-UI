@@ -1,0 +1,17 @@
+{
+  "dataset_summary": {
+    "total_samples": 5,
+    "gesture_types": [
+      "backward",
+      "close",
+      "forward",
+      "rectangle",
+      "shake"
+    ],
+    "feature_count": 27
+  },
+  "cross_validation_results": {
+    "SVM_Linear": {
+      "mean_accuracy": 0.999203187250996,
+      "std_accuracy": 0.0015936254980079667,
+      "scores": 
