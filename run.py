@@ -394,8 +394,7 @@ class GestureRecognitionPipeline:
             'KNN': KNeighborsClassifier(n_neighbors=5),
             'Logistic_Regression': LogisticRegression(max_iter=1000, random_state=42),
             'Decision_Tree': DecisionTreeClassifier(random_state=42),
-           
-            'Gaussian_NB': GaussianNB()
+            'Naive_Bayes': GaussianNB()
         }
     
     def cross_validate_models_participant_split(self, X_train, y_train):
@@ -541,6 +540,11 @@ class GestureRecognitionPipeline:
                 print(feature_importance.head(10))
             else:
                 print("Linear Regression model does not have feature importance.")
+            
+            if 'Naive_Bayes' in results:
+                nb_model = results['Naive_Bayes']['model']
+                # Naive Bayes does not have feature importance, but we can analyze probabilities
+                print("Naive Bayes model does not provide feature importance directly.")
 
         return None
 
