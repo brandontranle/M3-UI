@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 FluidBrowse Gesture Recognition Model Training Framework - Participant-Based Split Version
-Updated to use pre-computed features from JSON data instead of re-computing from raw points
+Allows selection of specific participants as test set
+MODIFIED: Uses pre-processed noisy data from noisy_gesture_data directory
 """
 
 import json
@@ -14,7 +15,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.naive_bayes import GaussianNB
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
@@ -24,84 +24,124 @@ import pickle
 import warnings
 warnings.filterwarnings('ignore')
 
-class DirectFeatureExtractor:
-    """Extract features directly from pre-computed feature objects in gesture data"""
+class GestureFeatureExtractor:
+    """Extract features from raw gesture point data"""
     
     def __init__(self):
         self.feature_names = []
     
-    def extract_features_from_data(self, gesture_data):
-        """Extract features directly from the gesture data object"""
-        if 'features' not in gesture_data:
-            print(f"Warning: No 'features' object found in gesture data")
+    def extract_features(self, points):
+        """Extract comprehensive features from gesture points"""
+        if len(points) < 2:
             return None
-        
-        features = gesture_data['features']
-        extracted = {}
-        
-        # Direct features from the features object
-        direct_features = [
-            'pointCount', 'totalDistance', 'averageSpeed', 'directionChanges'
-        ]
-        
-        for feature_name in direct_features:
-            if feature_name in features:
-                extracted[feature_name] = features[feature_name]
-        
-        # Bounding box features
-        if 'boundingBox' in features:
-            bbox = features['boundingBox']
-            bbox_features = [
-                'width', 'height', 'centerX', 'centerY', 'aspectRatio',
-                'minX', 'maxX', 'minY', 'maxY'
-            ]
             
-            for bbox_feature in bbox_features:
-                if bbox_feature in bbox:
-                    extracted[f'bbox_{bbox_feature}'] = bbox[bbox_feature]
+        points = np.array([(p['x'], p['y'], p['timestamp']) for p in points])
+        x_coords = points[:, 0]
+        y_coords = points[:, 1]
+        timestamps = points[:, 2]
         
-        # Top-level features (duration, etc.)
-        if 'duration' in gesture_data:
-            extracted['duration'] = gesture_data['duration']
+        features = {}
         
-        # Derived features we can calculate from existing ones
-        if 'totalDistance' in extracted and 'duration' in extracted:
-            # Speed = distance / time (more accurate than averageSpeed if duration is in ms)
-            extracted['calculated_speed'] = extracted['totalDistance'] / max(extracted['duration'] / 1000.0, 0.001)
+        # Basic geometric features
+        features.update(self._geometric_features(x_coords, y_coords))
         
-        if 'directionChanges' in extracted and 'pointCount' in extracted:
-            # Direction change rate
-            extracted['direction_change_rate'] = extracted['directionChanges'] / max(extracted['pointCount'] - 1, 1)
+        # Temporal features
+        features.update(self._temporal_features(timestamps))
         
-        if 'bbox_width' in extracted and 'bbox_height' in extracted:
-            # Bounding box area
-            extracted['bbox_area'] = extracted['bbox_width'] * extracted['bbox_height']
-            # Bounding box perimeter
-            extracted['bbox_perimeter'] = 2 * (extracted['bbox_width'] + extracted['bbox_height'])
+        # Movement features
+        features.update(self._movement_features(x_coords, y_coords, timestamps))
         
-        #if 'totalDistance' in extracted and 'bbox_width' in extracted and 'bbox_height' in extracted:
-            # Path efficiency (how direct the path is)
-            #diagonal = np.sqrt(extracted['bbox_width']**2 + extracted['bbox_height']**2)
-            #extracted['path_efficiency'] = diagonal / max(extracted['totalDistance'], 1)
+        # Shape features
+        features.update(self._shape_features(x_coords, y_coords))
         
-        #if 'pointCount' in extracted and 'duration' in extracted:
-            # Point density (points per second)
-         #   extracted['point_density'] = extracted['pointCount'] / max(extracted['duration'] / 1000.0, 0.001)
+        # Statistical features
+        features.update(self._statistical_features(x_coords, y_coords))
         
-        # Normalized features for better cross-device compatibility
-        #if 'bbox_width' in extracted and 'bbox_height' in extracted:
-         #   total_size = extracted['bbox_width'] + extracted['bbox_height']
-          #  if total_size > 0:
-           #     extracted['normalized_width'] = extracted['bbox_width'] / total_size
-            #    extracted['normalized_height'] = extracted['bbox_height'] / total_size
+        return features
+    
+    def _geometric_features(self, x_coords, y_coords):
+        """Basic geometric properties"""
+        return {
+            'point_count': len(x_coords),
+            'width': np.max(x_coords) - np.min(x_coords),
+            'height': np.max(y_coords) - np.min(y_coords),
+            'aspect_ratio': (np.max(x_coords) - np.min(x_coords)) / max(np.max(y_coords) - np.min(y_coords), 1),
+            'bounding_box_area': (np.max(x_coords) - np.min(x_coords)) * (np.max(y_coords) - np.min(y_coords)),
+            'center_x': np.mean(x_coords),
+            'center_y': np.mean(y_coords),
+            'start_end_distance': np.sqrt((x_coords[-1] - x_coords[0])**2 + (y_coords[-1] - y_coords[0])**2)
+        }
+    
+    def _temporal_features(self, timestamps):
+        """Time-based features"""
+        duration = timestamps[-1] - timestamps[0]
+        return {
+            'duration': duration,
+            'point_density': len(timestamps) / max(duration, 1) * 1000,  # points per second
+        }
+    
+    def _movement_features(self, x_coords, y_coords, timestamps):
+        """Movement and velocity features"""
+        features = {}
         
-        return extracted
+        # Calculate distances between consecutive points
+        distances = []
+        velocities = []
+        
+        for i in range(1, len(x_coords)):
+            dx = x_coords[i] - x_coords[i-1]
+            dy = y_coords[i] - y_coords[i-1]
+            dt = timestamps[i] - timestamps[i-1]
+            
+            distance = np.sqrt(dx**2 + dy**2)
+            distances.append(distance)
+            
+            if dt > 0:
+                velocity = distance / dt * 1000  # pixels per second
+                velocities.append(velocity)
+        
+        if distances:
+            features.update({
+                'total_distance': np.sum(distances),
+                'average_distance': np.mean(distances),
+                'distance_std': np.std(distances),
+                'max_distance': np.max(distances),
+            })
+        
+        if velocities:
+            features.update({
+                'average_velocity': np.mean(velocities),
+                'velocity_std': np.std(velocities),
+                'max_velocity': np.max(velocities),
+                'min_velocity': np.min(velocities),
+            })
+        
+        return features
+    
+    def _shape_features(self, x_coords, y_coords):
+        """Shape and curvature features"""
+        features = {}
+        
+        # Currently no shape features - removed direction changes and straightness as requested
+        
+        return features
+    
+    def _statistical_features(self, x_coords, y_coords):
+        """Statistical properties of coordinates"""
+        return {
+            'x_variance': np.var(x_coords),
+            'y_variance': np.var(y_coords),
+            'x_std': np.std(x_coords),
+            'y_std': np.std(y_coords),
+            'x_range': np.max(x_coords) - np.min(x_coords),
+            'y_range': np.max(y_coords) - np.min(y_coords),
+        }
 
 class GestureRecognitionPipeline:
     """Complete pipeline for gesture recognition model training and evaluation"""
     
     def __init__(self):
-        self.feature_extractor = DirectFeatureExtractor()
+        self.feature_extractor = GestureFeatureExtractor()
         self.scaler = StandardScaler()
         self.label_encoder = LabelEncoder()
         self.models = {}
@@ -111,6 +151,7 @@ class GestureRecognitionPipeline:
     def load_data_with_participants(self, data_path):
         """Load gesture data and keep track of participants"""
         print("Loading gesture data with participant tracking...")
+        print("📁 Using pre-processed noisy data from *noisy* directory")
         
         all_data = []
         participant_data = {}
@@ -162,19 +203,19 @@ class GestureRecognitionPipeline:
                     else:
                         continue
                     
-                    # Validate that gestures have features
-                    valid_gestures = []
-                    for gesture in gesture_data:
-                        if 'features' in gesture:
-                            valid_gestures.append(gesture)
-                        else:
-                            print(f"  Warning: Gesture missing 'features' object, skipping")
+                    # NO NOISE ADDITION - using pre-processed noisy data
+                    # Store participant data directly
+                    participant_data[participant_id] = gesture_data
+                    all_data.extend(gesture_data)
                     
-                    # Store participant data
-                    participant_data[participant_id] = valid_gestures
-                    all_data.extend(valid_gestures)
-                    
-                    print(f"  Found {len(valid_gestures)} valid samples for {participant_id}")
+                    # Check if noise metadata exists
+                    if isinstance(file_data, dict) and 'noise_metadata' in file_data:
+                        noise_info = file_data['noise_metadata']
+                        print(f"  📊 Found {len(gesture_data)} samples with dramatic noise applied")
+                        print(f"     Base offset: {noise_info['noise_params']['base_offset']}px")
+                        print(f"     Scale factor: {noise_info['noise_params']['scale_factor']:.2f}x")
+                    else:
+                        print(f"  Found {len(gesture_data)} samples for {participant_id}")
                         
             except Exception as e:
                 print(f"Error loading {json_file}: {e}")
@@ -193,17 +234,6 @@ class GestureRecognitionPipeline:
                 gtype = gesture.get('gestureType', 'unknown')
                 gesture_counts[gtype] = gesture_counts.get(gtype, 0) + 1
             print(f"  {pid}: {len(data)} total samples - {gesture_counts}")
-        
-        # Show what features are available
-        if all_data:
-            sample_gesture = all_data[0]
-            print(f"\nAvailable features in data:")
-            if 'features' in sample_gesture:
-                print(f"  Direct features: {list(sample_gesture['features'].keys())}")
-                if 'boundingBox' in sample_gesture['features']:
-                    print(f"  Bounding box features: {list(sample_gesture['features']['boundingBox'].keys())}")
-            if 'duration' in sample_gesture:
-                print(f"  Top-level features: duration")
         
         self.participant_data = participant_data
         return all_data, participant_data
@@ -313,14 +343,14 @@ class GestureRecognitionPipeline:
     
     def preprocess_data_with_split(self, train_data, test_data):
         """Extract features and prepare data for training with participant split"""
-        print("🚀 Extracting features from pre-computed data (FAST)...")
+        print("Extracting features for participant-based split...")
         
         # Process training data
         train_features_list = []
         train_labels = []
         
         for gesture in train_data:
-            features = self.feature_extractor.extract_features_from_data(gesture)
+            features = self.feature_extractor.extract_features(gesture['points'])
             if features is not None:
                 train_features_list.append(features)
                 label = gesture.get('gestureType') or gesture.get('label') or gesture.get('type')
@@ -331,7 +361,7 @@ class GestureRecognitionPipeline:
         test_labels = []
         
         for gesture in test_data:
-            features = self.feature_extractor.extract_features_from_data(gesture)
+            features = self.feature_extractor.extract_features(gesture['points'])
             if features is not None:
                 test_features_list.append(features)
                 label = gesture.get('gestureType') or gesture.get('label') or gesture.get('type')
@@ -345,8 +375,6 @@ class GestureRecognitionPipeline:
         train_df = pd.DataFrame(train_features_list)
         test_df = pd.DataFrame(test_features_list)
         
-        print(f"✅ Extracted features: {list(train_df.columns)}")
-        
         # Ensure same feature columns
         common_features = list(set(train_df.columns) & set(test_df.columns))
         train_df = train_df[common_features]
@@ -358,8 +386,6 @@ class GestureRecognitionPipeline:
         
         # Store feature names
         self.feature_names = train_df.columns.tolist()
-        
-        print(f"Final feature set ({len(self.feature_names)} features): {self.feature_names}")
         
         # Convert to numpy arrays
         X_train = train_df.values
@@ -393,9 +419,10 @@ class GestureRecognitionPipeline:
             'MLP': MLPClassifier(hidden_layer_sizes=(100, 50), max_iter=1000, random_state=42),
             'KNN': KNeighborsClassifier(n_neighbors=5),
             'Logistic_Regression': LogisticRegression(max_iter=1000, random_state=42),
-            'Decision_Tree': DecisionTreeClassifier(random_state=42),
-           
-            'Gaussian_NB': GaussianNB()
+            'Decision_Tree': DecisionTreeClassifier(random_state=42)   
+            # Add more models as needed
+            
+
         }
     
     def cross_validate_models_participant_split(self, X_train, y_train):
@@ -464,103 +491,28 @@ class GestureRecognitionPipeline:
                 'importance': rf_model.feature_importances_
             }).sort_values('importance', ascending=False)
             
-            print("\nTop 10 most important features (Random Forest):")
+            print("Top 10 most important features (Random Forest):")
             print(feature_importance.head(10))
             
-
-        if 'Decision_Tree' in results:
-            dt_model = results['Decision_Tree']['model']
-            feature_importance = pd.DataFrame({
-                'feature': self.feature_names,
-                'importance': dt_model.feature_importances_
-            }).sort_values('importance', ascending=False)
-            
-            print("\nTop 10 most important features (Decision Tree):")
-            print(feature_importance.head(10))
-            
-        if 'MLP' in results:
-            mlp_model = results['MLP']['model']
-            # MLP does not have feature importance, but we can analyze weights
-            weights = mlp_model.coefs_[0]
-            feature_importance = pd.DataFrame({
-                'feature': self.feature_names,
-                'importance': np.abs(weights).sum(axis=1)
-            }).sort_values('importance', ascending=False)
-            print("\nTop 10 most important features (MLP weights):")
-            print(feature_importance.head(10))
-
-        if 'SVM_Linear' in results:
-            svm_model = results['SVM_Linear']['model']
-            if hasattr(svm_model, 'coef_'):
-                feature_importance = pd.DataFrame({
-                    'feature': self.feature_names,
-                    'importance': np.abs(svm_model.coef_[0])
-                }).sort_values('importance', ascending=False)
-                print("\nTop 10 most important features (SVM Linear):")
-                print(feature_importance.head(10))
-            else:
-                print("SVM Linear model does not have feature importance.")
-
-        if 'SVM_RBF' in results:
-            svm_model = results['SVM_RBF']['model']
-            if hasattr(svm_model, 'coef_'):
-                feature_importance = pd.DataFrame({
-                    'feature': self.feature_names,
-                    'importance': np.abs(svm_model.coef_[0])
-                }).sort_values('importance', ascending=False)
-                print("\nTop 10 most important features (SVM RBF):")
-                print(feature_importance.head(10))
-            else:
-                print("SVM RBF model does not have feature importance.")
+            return feature_importance
         
-        if 'KNN' in results:
-            knn_model = results['KNN']['model']
-            # KNN does not have feature importance, but we can analyze distances
-            print("KNN model does not provide feature importance directly.")
-
-        if 'Logistic_Regression' in results:
-            lr_model = results['Logistic_Regression']['model']
-            if hasattr(lr_model, 'coef_'):
-                feature_importance = pd.DataFrame({
-                    'feature': self.feature_names,
-                    'importance': np.abs(lr_model.coef_[0])
-                }).sort_values('importance', ascending=False)
-                print("\nTop 10 most important features (Logistic Regression):")
-                print(feature_importance.head(10))
-            else:
-                print("Logistic Regression model does not have feature importance.")
-        
-        if 'Linear_Regression' in results:
-            lr_model = results['Linear_Regression']['model']
-            if hasattr(lr_model, 'coef_'):
-                feature_importance = pd.DataFrame({
-                    'feature': self.feature_names,
-                    'importance': np.abs(lr_model.coef_)
-                }).sort_values('importance', ascending=False)
-                print("\nTop 10 most important features (Linear Regression):")
-                print(feature_importance.head(10))
-            else:
-                print("Linear Regression model does not have feature importance.")
-
         return None
 
 def main():
     """Main execution function with participant-based split option"""
-    print("=== FluidBrowse Gesture Recognition - Optimized with Direct Feature Extraction ===\n")
+    print("=== FluidBrowse Gesture Recognition - Participant Split Version ===\n")
+    print("MODIFIED: Using pre-processed dramatically noisy datasets\n")
     
     # Initialize pipeline
     pipeline = GestureRecognitionPipeline()
     
-    # Load data with participant tracking
-    data_path = "./noisy"
+    # Load data from noisy directory (pre-processed with dramatic noise)
+    data_path = "noisy"
     all_data, participant_data = pipeline.load_data_with_participants(data_path)
     
     if not all_data:
         print("No data found!")
         return
-    
-    print(f"\n🚀 USING PRE-COMPUTED FEATURES - MUCH FASTER!")
-    print(f"   No need to re-calculate features from raw points")
     
     print(f"\n{'='*60}")
     print("SPLIT SELECTION:")
@@ -640,12 +592,12 @@ def main():
             print(f"\n🎯 This represents performance on COMPLETELY NEW USERS!")
             print(f"   Models were trained on {len(train_participants)} participants")
             print(f"   and tested on {len(test_participants)} different participants")
+            print(f"   📊 Using DRAMATICALLY differentiated datasets with huge coordinate differences")
     
     # Fallback to random split or if user chose option 2
     if split_choice != "1":
         print(f"\n=== TRADITIONAL RANDOM SPLIT ===")
-        print("Random split not implemented in this optimized version.")
-        print("Participant-based split is more realistic for gesture recognition evaluation.")
+        print("Using traditional random split would go here")
 
 if __name__ == "__main__":
     main()

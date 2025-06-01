@@ -236,6 +236,10 @@ class GestureRecognitionPipeline:
         
         print(f"Total loaded: {len(all_data)} gesture samples from {len(participant_data)} participants")
         
+        print("Loaded participants:", list(participant_data.keys()))
+        for pid, gestures in participant_data.items():
+            print(f"  • {pid}: {len(gestures)} samples")
+
         # Show participant summary
         print(f"\nParticipant Summary:")
         for pid, data in participant_data.items():
@@ -501,8 +505,72 @@ class GestureRecognitionPipeline:
             print("Top 10 most important features (Random Forest):")
             print(feature_importance.head(10))
             
-            return feature_importance
+
+        if 'Decision_Tree' in results:
+            dt_model = results['Decision_Tree']['model']
+            feature_importance = pd.DataFrame({
+                'feature': self.feature_names,
+                'importance': dt_model.feature_importances_
+            }).sort_values('importance', ascending=False)
+            
+            print("Top 10 most important features (Decision Tree):")
+            print(feature_importance.head(10))
+            
+        if 'MLP' in results:
+            mlp_model = results['MLP']['model']
+            # MLP does not have feature importance, but we can analyze weights
+            weights = mlp_model.coefs_[0]
+            feature_importance = pd.DataFrame({
+                'feature': self.feature_names,
+                'importance': np.abs(weights).sum(axis=1)
+            }).sort_values('importance', ascending=False)
+            print("Top 10 most important features (MLP weights):")
+            print(feature_importance.head(10))
+
+        if 'SVM_Linear' in results:
+            svm_model = results['SVM_Linear']['model']
+            if hasattr(svm_model, 'coef_'):
+                feature_importance = pd.DataFrame({
+                    'feature': self.feature_names,
+                    'importance': np.abs(svm_model.coef_[0])
+                }).sort_values('importance', ascending=False)
+                print("Top 10 most important features (SVM Linear):")
+                print(feature_importance.head(10))
+            else:
+                print("SVM Linear model does not have feature importance.")
+
+        if 'SVM_RBF' in results:
+            svm_model = results['SVM_RBF']['model']
+            if hasattr(svm_model, 'coef_'):
+                feature_importance = pd.DataFrame({
+                    'feature': self.feature_names,
+                    'importance': np.abs(svm_model.coef_[0])
+                }).sort_values('importance', ascending=False)
+                print("Top 10 most important features (SVM RBF):")
+                print(feature_importance.head(10))
+            else:
+                print("SVM RBF model does not have feature importance.")
         
+        if 'KNN' in results:
+            knn_model = results['KNN']['model']
+            # KNN does not have feature importance, but we can analyze distances
+            print("KNN model does not provide feature importance directly.")
+
+        if 'Logistic_Regression' in results:
+            lr_model = results['Logistic_Regression']['model']
+            if hasattr(lr_model, 'coef_'):
+                feature_importance = pd.DataFrame({
+                    'feature': self.feature_names,
+                    'importance': np.abs(lr_model.coef_[0])
+                }).sort_values('importance', ascending=False)
+                print("Top 10 most important features (Logistic Regression):")
+                print(feature_importance.head(10))
+            else:
+                print("Logistic Regression model does not have feature importance.")
+        
+        
+
+
         return None
 
 def main():
@@ -513,7 +581,7 @@ def main():
     pipeline = GestureRecognitionPipeline()
     
     # Load data with participant tracking
-    data_path = "."
+    data_path = "./noisy"
     all_data, participant_data = pipeline.load_data_with_participants(data_path)
     
     if not all_data:
